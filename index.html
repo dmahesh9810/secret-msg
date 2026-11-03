@@ -1,0 +1,1864 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CYBER•STEGO // Advanced LSB Steganography Engine</title>
+  <meta name="description" content="Secure, client-side LSB image steganography with optional cryptographic encryption. Embed and reveal secret messages in lossless PNG images.">
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            cyber: {
+              black: '#070a12',
+              card: '#0d1322',
+              cardHover: '#131b30',
+              border: '#1e293b',
+              accent: '#00f0ff',
+              accentGlow: 'rgba(0, 240, 255, 0.25)',
+              neonGreen: '#00ff9d',
+              neonGreenGlow: 'rgba(0, 255, 157, 0.25)',
+              neonPurple: '#a855f7',
+              neonPink: '#ff007f',
+              muted: '#64748b'
+            }
+          },
+          fontFamily: {
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', '"Liberation Mono"', '"Courier New"', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Cyber grid & background ambient glow */
+    body {
+      background-color: #070a12;
+      background-image: 
+        radial-gradient(circle at 15% 20%, rgba(0, 240, 255, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 80%, rgba(0, 255, 157, 0.06) 0%, transparent 40%),
+        linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090e1a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 4px;
+      border: 1px solid #334155;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #00f0ff;
+    }
+
+    /* Cyber Glows */
+    .glow-cyan {
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.35);
+    }
+    .glow-green {
+      box-shadow: 0 0 20px rgba(0, 255, 157, 0.35);
+    }
+
+    /* Scanline overlay effect */
+    .scanlines::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0),
+        rgba(255, 255, 255, 0) 50%,
+        rgba(0, 0, 0, 0.25) 50%,
+        rgba(0, 0, 0, 0.25)
+      );
+      background-size: 100% 4px;
+      pointer-events: none;
+      opacity: 0.4;
+    }
+
+    /* Drag & drop hover effect */
+    .drag-active {
+      border-color: #00f0ff !important;
+      background-color: rgba(0, 240, 255, 0.08) !important;
+      box-shadow: 0 0 25px rgba(0, 240, 255, 0.25);
+    }
+
+    /* Toast animation */
+    @keyframes slideIn {
+      from { transform: translateX(110%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes slideOut {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(110%); opacity: 0; }
+    }
+    .toast-enter {
+      animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .toast-exit {
+      animation: slideOut 0.25s cubic-bezier(0.7, 0, 0.84, 0) forwards;
+    }
+
+    /* Pulse animation */
+    @keyframes pulse-subtle {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .pulse-dot {
+      animation: pulse-subtle 2s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="flex flex-col min-h-screen text-slate-200 antialiased selection:bg-cyan-500 selection:text-black">
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="fixed top-5 right-5 z-50 flex flex-col gap-3 w-80 sm:w-96 pointer-events-none"></div>
+
+  <!-- Top Navigation / Header -->
+  <header class="border-b border-slate-800/80 bg-cyber-black/80 backdrop-blur-md sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      
+      <!-- Brand Logo -->
+      <div class="flex items-center gap-3">
+        <div class="relative w-9 h-9 rounded-lg bg-slate-900 border border-cyan-500/40 flex items-center justify-center glow-cyan">
+          <svg class="w-5 h-5 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+            <circle cx="9" cy="9" r="2"/>
+            <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+            <path d="M14 6h4"/>
+            <path d="M16 4v4"/>
+          </svg>
+          <span class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-cyan-400 pulse-dot"></span>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-extrabold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-300 to-emerald-400 text-lg">CYBER•STEGO</span>
+            <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-400 border border-cyan-800/50">LSB v2.4</span>
+          </div>
+          <p class="text-[11px] text-slate-400 hidden sm:block">Pixel-Level Cryptographic Steganography Engine</p>
+        </div>
+      </div>
+
+      <!-- Header Quick Actions & Status -->
+      <div class="flex items-center gap-3">
+        <div class="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/90 border border-slate-800 text-xs text-slate-300">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></span>
+          <span class="font-mono text-[11px] text-emerald-400">ENGINE ONLINE</span>
+          <span class="text-slate-600">|</span>
+          <span class="text-[11px] text-slate-400">100% Client-Side</span>
+        </div>
+
+        <!-- Info / How it works modal trigger -->
+        <button id="howItWorksBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-cyan-300 border border-slate-700 hover:border-cyan-500/40 text-xs font-medium transition-all">
+          <svg class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 16v-4"></path>
+            <path d="M12 8h.01"></path>
+          </svg>
+          <span>How It Works</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Main Content Wrapper -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-6">
+
+    <!-- Hero / Protocol Description -->
+    <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900/90 via-slate-900/70 to-cyan-950/30 border border-slate-800 p-6 shadow-2xl">
+      <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
+            Steganographic Covert Channels
+          </h1>
+          <p class="text-sm text-slate-400 mt-1 max-w-2xl">
+            Conceal confidential text messages within the Least Significant Bits (<span class="text-cyan-400 font-mono">LSB</span>) of RGB pixel channels with lossless PNG preservation. Optional key derivation with authenticated cryptographic protection.
+          </p>
+        </div>
+        
+        <!-- Live Protocol Spec Badges -->
+        <div class="flex flex-wrap gap-2 text-xs font-mono">
+          <div class="px-2.5 py-1.5 rounded-lg bg-slate-950/80 border border-slate-800 text-slate-300 flex items-center gap-1.5">
+            <span class="text-cyan-400">●</span> 32-Bit Length Header
+          </div>
+          <div class="px-2.5 py-1.5 rounded-lg bg-slate-950/80 border border-slate-800 text-slate-300 flex items-center gap-1.5">
+            <span class="text-emerald-400">●</span> RGB 3-Channel LSB
+          </div>
+          <div class="px-2.5 py-1.5 rounded-lg bg-slate-950/80 border border-slate-800 text-slate-300 flex items-center gap-1.5">
+            <span class="text-purple-400">●</span> Alpha 255 Preserved
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mode Selector Tabs -->
+    <div class="flex border-b border-slate-800 bg-slate-900/60 p-1.5 rounded-xl gap-2 backdrop-blur-sm">
+      <button id="tabEncodeBtn" class="flex-1 flex items-center justify-center gap-2.5 py-3 px-4 rounded-lg font-semibold text-sm transition-all duration-200 bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 glow-cyan">
+        <svg class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <span>Hide Message (Encode)</span>
+      </button>
+
+      <button id="tabDecodeBtn" class="flex-1 flex items-center justify-center gap-2.5 py-3 px-4 rounded-lg font-semibold text-sm transition-all duration-200 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent">
+        <svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+        </svg>
+        <span>Reveal Message (Decode)</span>
+      </button>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- TAB 1: ENCODE / HIDE MESSAGE SECTION       -->
+    <!-- ========================================== -->
+    <section id="encodeSection" class="grid grid-cols-1 lg:grid-cols-12 gap-6 transition-all duration-300">
+      
+      <!-- Left Column: Image Upload & Preview (5 cols) -->
+      <div class="lg:col-span-5 flex flex-col gap-5">
+        <div class="bg-cyber-card border border-slate-800 rounded-2xl p-5 flex flex-col gap-4 shadow-xl">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold tracking-wide text-slate-200 flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+              STEP 1: Cover Image
+            </h2>
+            <button id="generateSampleCoverBtn" class="text-xs text-cyan-400 hover:text-cyan-300 font-mono underline decoration-cyan-500/50 hover:decoration-cyan-400 flex items-center gap-1 transition-colors">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                <path d="M16 21h5v-5"/>
+              </svg>
+              Use Sample Cover
+            </button>
+          </div>
+
+          <!-- Dropzone Container -->
+          <div id="encodeDropzone" class="relative group border-2 border-dashed border-slate-700 hover:border-cyan-500/60 rounded-xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 bg-slate-950/40 hover:bg-cyan-950/10 min-h-[220px]">
+            <input type="file" id="encodeFileInput" accept="image/png,image/jpeg,image/jpg,image/bmp,image/webp" class="hidden">
+            
+            <!-- Empty State Prompt -->
+            <div id="encodeEmptyPrompt" class="flex flex-col items-center gap-3">
+              <div class="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-700/80 flex items-center justify-center group-hover:scale-110 group-hover:border-cyan-500/50 transition-all duration-300">
+                <svg class="w-7 h-7 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                  <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/>
+                  <path d="M12 12v9"/>
+                  <path d="m16 16-4-4-4 4"/>
+                </svg>
+              </div>
+              <div>
+                <p class="text-sm font-medium text-slate-200">
+                  <span class="text-cyan-400 font-semibold">Click to upload</span> or drag and drop
+                </p>
+                <p class="text-xs text-slate-400 mt-1">PNG, JPG, BMP (Auto-lossless conversion)</p>
+              </div>
+            </div>
+
+            <!-- Preview Image Display (Hidden initially) -->
+            <div id="encodePreviewContainer" class="hidden w-full flex flex-col items-center gap-3">
+              <div class="relative w-full max-h-56 rounded-lg overflow-hidden border border-slate-700/70 bg-black/50 flex items-center justify-center">
+                <img id="encodeImagePreview" src="" alt="Cover Image Preview" class="max-h-56 max-w-full object-contain">
+                <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none"></div>
+                <button id="removeCoverImageBtn" title="Remove Image" class="absolute top-2 right-2 p-1.5 rounded-lg bg-black/70 hover:bg-red-500/80 text-slate-300 hover:text-white transition-all">
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+              <p id="encodeFileName" class="text-xs text-slate-300 font-mono truncate max-w-full"></p>
+            </div>
+          </div>
+
+          <!-- Live Image Metrics & Capacity Badges -->
+          <div id="encodeMetricsBox" class="rounded-xl bg-slate-950/70 border border-slate-800 p-4 flex flex-col gap-3">
+            <div class="flex items-center justify-between text-xs text-slate-400">
+              <span class="font-mono uppercase tracking-wider text-[11px]">Storage Matrix</span>
+              <span id="encodeStatusTag" class="text-amber-400 flex items-center gap-1 font-mono text-[11px]">
+                <span>●</span> Awaiting Cover
+              </span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div class="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800/80">
+                <span class="text-slate-500 block text-[10px] font-mono">RESOLUTION</span>
+                <span id="encodeResText" class="font-mono font-semibold text-slate-200">0 × 0 px</span>
+              </div>
+              <div class="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800/80">
+                <span class="text-slate-500 block text-[10px] font-mono">AVAILABLE PIXELS</span>
+                <span id="encodePixelsText" class="font-mono font-semibold text-slate-200">0</span>
+              </div>
+            </div>
+
+            <!-- Capacity Progress Bar -->
+            <div class="flex flex-col gap-1.5 mt-1">
+              <div class="flex justify-between items-center text-xs">
+                <span class="text-slate-400 font-mono text-[11px]">Payload Capacity:</span>
+                <span id="encodeCapacityText" class="font-mono font-medium text-cyan-400">0 / 0 bytes (0%)</span>
+              </div>
+              <div class="w-full h-2 rounded-full bg-slate-900 border border-slate-800 overflow-hidden">
+                <div id="encodeProgressBar" class="h-full bg-gradient-to-r from-cyan-500 to-emerald-400 transition-all duration-200" style="width: 0%"></div>
+              </div>
+              <div class="flex justify-between text-[11px] text-slate-500 font-mono">
+                <span>Header: 32 bits reserved</span>
+                <span id="encodeMaxCharsText">Max: 0 chars</span>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Right Column: Secret Message, Password & Action (7 cols) -->
+      <div class="lg:col-span-7 flex flex-col gap-5">
+        <div class="bg-cyber-card border border-slate-800 rounded-2xl p-6 flex flex-col gap-5 shadow-xl">
+          
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold tracking-wide text-slate-200 flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+              STEP 2: Secret Message Payload
+            </h2>
+            <div class="flex items-center gap-2">
+              <button id="loadSampleMessageBtn" class="text-xs text-slate-400 hover:text-cyan-300 font-mono flex items-center gap-1 transition-colors">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                </svg>
+                Load Sample Dispatch
+              </button>
+              <span class="text-slate-700">|</span>
+              <button id="clearMessageBtn" class="text-xs text-slate-400 hover:text-red-400 font-mono transition-colors">
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <!-- Secret Message Textarea -->
+          <div class="flex flex-col gap-1.5">
+            <label for="secretMessageInput" class="text-xs font-mono text-slate-400 flex justify-between">
+              <span>CONFIDENTIAL TEXT:</span>
+              <span id="charCountLabel" class="text-cyan-400">0 characters (0 bytes)</span>
+            </label>
+            <div class="relative">
+              <textarea id="secretMessageInput" rows="6" placeholder="Type or paste the secret message you wish to embed into the cover image..." class="w-full rounded-xl bg-slate-950/80 border border-slate-700 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 text-slate-200 text-sm font-mono placeholder:text-slate-600 p-4 resize-y transition-all focus:outline-none focus:glow-cyan"></textarea>
+            </div>
+          </div>
+
+          <!-- Optional Stego Password / Encryption Key -->
+          <div class="flex flex-col gap-2 rounded-xl bg-slate-950/50 border border-slate-800/90 p-4">
+            <div class="flex items-center justify-between">
+              <label for="encodePasswordInput" class="text-xs font-semibold text-slate-300 flex items-center gap-2">
+                <svg class="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                Stego Password / Key (Optional Extra Encryption)
+              </label>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-800/50">PBKDF2-HMAC-SHA256</span>
+            </div>
+
+            <div class="relative flex items-center">
+              <input type="password" id="encodePasswordInput" placeholder="Leave blank for unencrypted LSB, or enter secret key for cipher protection..." class="w-full rounded-lg bg-slate-900 border border-slate-700/80 focus:border-purple-400 focus:ring-1 focus:ring-purple-400 text-slate-200 text-sm font-mono placeholder:text-slate-600 px-3.5 py-2.5 pr-10 focus:outline-none transition-all">
+              <button type="button" id="toggleEncodePasswordBtn" class="absolute right-3 text-slate-400 hover:text-slate-200">
+                <svg class="w-4 h-4 eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            </div>
+            <p class="text-[11px] text-slate-400">
+              When a password is provided, the message is encrypted using an authenticated stream cipher before bit embedding. Decoding will strictly require this password.
+            </p>
+          </div>
+
+          <!-- Action Button: Encode & Download -->
+          <div class="flex flex-col gap-3 pt-2">
+            <button id="encodeAndDownloadBtn" disabled class="group relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-400 hover:from-cyan-400 hover:to-emerald-300 text-slate-950 font-bold py-4 px-6 text-sm sm:text-base flex items-center justify-center gap-3 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:from-cyan-500 disabled:hover:to-emerald-400 shadow-lg hover:shadow-cyan-500/25">
+              <span class="relative z-10 flex items-center gap-2">
+                <svg id="encodeBtnIcon" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25">
+                  <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <span id="encodeBtnText">🔒 Encode & Download Stego PNG</span>
+              </span>
+              <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+            </button>
+
+            <!-- Quick Switch to Decode Banner (Appears after successful encode) -->
+            <div id="postEncodeActionBox" class="hidden rounded-xl bg-cyan-950/40 border border-cyan-800/60 p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div class="flex items-center gap-2.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-dot"></span>
+                <span class="text-xs text-slate-200">Stego PNG ready! Test message extraction immediately?</span>
+              </div>
+              <button id="quickSwitchToDecodeBtn" class="w-full sm:w-auto px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap glow-cyan">
+                <span>Switch to Decode & Reveal →</span>
+              </button>
+            </div>
+            
+            <p class="text-center text-[11px] text-slate-500 font-mono">
+              Output will strictly download as lossless PNG to safeguard RGB LSBs from compression artifacts.
+            </p>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 2: DECODE / REVEAL MESSAGE SECTION     -->
+    <!-- ========================================== -->
+    <section id="decodeSection" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-6 transition-all duration-300">
+      
+      <!-- Left Column: Stego Image Upload & Controls (5 cols) -->
+      <div class="lg:col-span-5 flex flex-col gap-5">
+        <div class="bg-cyber-card border border-slate-800 rounded-2xl p-5 flex flex-col gap-4 shadow-xl">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold tracking-wide text-slate-200 flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+              STEP 1: Stego PNG Image
+            </h2>
+            <button id="loadLastEncodedBtn" class="hidden text-xs text-emerald-400 hover:text-emerald-300 font-mono underline decoration-emerald-500/50 hover:decoration-emerald-400 flex items-center gap-1 transition-colors">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 14 4 9 9 4"/>
+                <path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
+              </svg>
+              Load Last Encoded
+            </button>
+          </div>
+
+          <!-- Decode Dropzone -->
+          <div id="decodeDropzone" class="relative group border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 bg-slate-950/40 hover:bg-emerald-950/10 min-h-[220px]">
+            <input type="file" id="decodeFileInput" accept="image/png,image/jpeg,image/jpg,image/bmp,image/webp" class="hidden">
+            
+            <!-- Empty State Prompt -->
+            <div id="decodeEmptyPrompt" class="flex flex-col items-center gap-3">
+              <div class="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-700/80 flex items-center justify-center group-hover:scale-110 group-hover:border-emerald-500/50 transition-all duration-300">
+                <svg class="w-7 h-7 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                  <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+                </svg>
+              </div>
+              <div>
+                <p class="text-sm font-medium text-slate-200">
+                  <span class="text-emerald-400 font-semibold">Upload Stego Image</span> or drag here
+                </p>
+                <p class="text-xs text-slate-400 mt-1">Select the lossless PNG with hidden data</p>
+              </div>
+            </div>
+
+            <!-- Preview Image Display (Hidden initially) -->
+            <div id="decodePreviewContainer" class="hidden w-full flex flex-col items-center gap-3">
+              <div class="relative w-full max-h-56 rounded-lg overflow-hidden border border-slate-700/70 bg-black/50 flex items-center justify-center">
+                <img id="decodeImagePreview" src="" alt="Stego Image Preview" class="max-h-56 max-w-full object-contain">
+                <button id="removeDecodeImageBtn" title="Remove Image" class="absolute top-2 right-2 p-1.5 rounded-lg bg-black/70 hover:bg-red-500/80 text-slate-300 hover:text-white transition-all">
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+              <p id="decodeFileName" class="text-xs text-slate-300 font-mono truncate max-w-full"></p>
+            </div>
+          </div>
+
+          <!-- JPEG Warning (Only shows if user uploads a JPG to decode) -->
+          <div id="decodeJpegWarning" class="hidden rounded-xl bg-amber-950/40 border border-amber-800/60 p-3.5 flex items-start gap-3">
+            <svg class="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <p class="text-xs text-amber-200 leading-relaxed">
+              <strong>Warning:</strong> JPEG uses lossy compression that alters pixel values and corrupts LSB bit matrices. If this was saved as JPEG, the hidden message will be destroyed. Always use the lossless PNG.
+            </p>
+          </div>
+
+          <!-- Image Metrics Info -->
+          <div id="decodeMetricsBox" class="rounded-xl bg-slate-950/70 border border-slate-800 p-4 flex flex-col gap-3">
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div class="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800/80">
+                <span class="text-slate-500 block text-[10px] font-mono">IMAGE RESOLUTION</span>
+                <span id="decodeResText" class="font-mono font-semibold text-slate-200">0 × 0 px</span>
+              </div>
+              <div class="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800/80">
+                <span class="text-slate-500 block text-[10px] font-mono">TOTAL RGB CHANNELS</span>
+                <span id="decodeChannelsText" class="font-mono font-semibold text-slate-200">0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stego Password for Decryption -->
+          <div class="flex flex-col gap-2 rounded-xl bg-slate-950/50 border border-slate-800/90 p-4">
+            <label for="decodePasswordInput" class="text-xs font-semibold text-slate-300 flex items-center justify-between">
+              <span class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="m15 5 4 4"/>
+                  <path d="M13 7 4 16v4h4l9-9"/>
+                </svg>
+                Stego Password / Key (Optional)
+              </span>
+              <span class="text-[10px] font-mono text-slate-500">If set during encode</span>
+            </label>
+
+            <div class="relative flex items-center">
+              <input type="password" id="decodePasswordInput" placeholder="Enter password if payload was encrypted..." class="w-full rounded-lg bg-slate-900 border border-slate-700/80 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 text-slate-200 text-sm font-mono placeholder:text-slate-600 px-3.5 py-2.5 pr-10 focus:outline-none transition-all">
+              <button type="button" id="toggleDecodePasswordBtn" class="absolute right-3 text-slate-400 hover:text-slate-200">
+                <svg class="w-4 h-4 eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Action Button: Reveal Hidden Message -->
+          <button id="revealMessageBtn" disabled class="group relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-bold py-4 px-6 text-sm sm:text-base flex items-center justify-center gap-3 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:from-emerald-500 disabled:hover:to-teal-400 shadow-lg hover:shadow-emerald-500/25">
+            <span class="relative z-10 flex items-center gap-2">
+              <svg id="decodeBtnIcon" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25">
+                <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+              </svg>
+              <span id="decodeBtnText">🔓 Reveal Hidden Message</span>
+            </span>
+            <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+          </button>
+
+        </div>
+      </div>
+
+      <!-- Right Column: Revealed Message & Payload Terminal (7 cols) -->
+      <div class="lg:col-span-7 flex flex-col gap-5">
+        <div class="bg-cyber-card border border-slate-800 rounded-2xl p-6 flex flex-col gap-5 shadow-xl min-h-[460px]">
+          
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+              <h2 class="text-sm font-semibold tracking-wide text-slate-200">
+                DECRYPTED PAYLOAD TERMINAL
+              </h2>
+            </div>
+            <div id="decodeStatusBadge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400">
+              STATUS: IDLE
+            </div>
+          </div>
+
+          <!-- Payload Output Box -->
+          <div class="relative flex-1 flex flex-col rounded-xl bg-slate-950 border border-slate-800/90 overflow-hidden">
+            <!-- Terminal Header Bar -->
+            <div class="bg-slate-900/90 px-4 py-2 border-b border-slate-800 flex items-center justify-between text-xs font-mono text-slate-400">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500/70 inline-block"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-500/70 inline-block"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500/70 inline-block"></span>
+                <span class="ml-2 text-slate-400">channel://lsb-stream:stdout</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <span id="revealedStats" class="text-slate-500">0 words | 0 chars</span>
+              </div>
+            </div>
+
+            <!-- Terminal Text Content -->
+            <div class="relative flex-1 p-4 font-mono text-sm leading-relaxed overflow-y-auto max-h-[380px] bg-slate-950">
+              <div id="decodedEmptyPrompt" class="h-full flex flex-col items-center justify-center text-center text-slate-600 gap-3 py-16">
+                <svg class="w-12 h-12 text-slate-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                <p class="text-xs font-mono">Upload an encoded Stego PNG and click "Reveal Hidden Message" to extract data.</p>
+              </div>
+
+              <pre id="decodedTextOutput" class="hidden whitespace-pre-wrap break-words text-emerald-400 selection:bg-emerald-500 selection:text-black font-mono"></pre>
+            </div>
+          </div>
+
+          <!-- Actions: Copy to Clipboard, Download Text, Clear -->
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+            <div class="flex items-center gap-2">
+              <button id="copyMessageBtn" disabled class="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium border border-slate-700 hover:border-cyan-500/50 flex items-center gap-2 transition-all">
+                <svg class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                </svg>
+                <span id="copyBtnText">Copy to Clipboard</span>
+              </button>
+
+              <button id="downloadTextBtn" disabled class="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium border border-slate-700 hover:border-emerald-500/50 flex items-center gap-2 transition-all">
+                <svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span>Save as .txt</span>
+              </button>
+            </div>
+
+            <button id="clearDecodedBtn" class="text-xs text-slate-500 hover:text-slate-300 font-mono transition-colors">
+              Reset Output
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ========================================== -->
+  <!-- MODAL: HOW STEGANOGRAPHY WORKS             -->
+  <!-- ========================================== -->
+  <div id="howItWorksModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+    <div class="relative w-full max-w-2xl bg-cyber-card border border-slate-700 rounded-2xl p-6 shadow-2xl flex flex-col gap-5 max-h-[90vh] overflow-y-auto">
+      
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-cyan-950 border border-cyan-800 flex items-center justify-center">
+            <svg class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 16v-4"/>
+              <path d="M12 8h.01"/>
+            </svg>
+          </div>
+          <h3 class="text-base font-bold text-white">How LSB Steganography Operates</h3>
+        </div>
+        <button id="closeModalBtn" class="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="space-y-4 text-xs sm:text-sm text-slate-300 leading-relaxed font-sans">
+        <p>
+          <strong class="text-cyan-400">Least Significant Bit (LSB) Steganography</strong> conceals secret data by substituting the lowest-order bit of standard image pixel values. Because changing the 1's bit changes the color by at most 1 level out of 256, the visual alteration is imperceptible to human vision.
+        </p>
+
+        <!-- Technical Architecture Card -->
+        <div class="rounded-xl bg-slate-950 p-4 border border-slate-800 flex flex-col gap-3 font-mono text-xs">
+          <div class="text-cyan-400 font-semibold uppercase tracking-wider">Bit Channel Layout (RGBA Pixel):</div>
+          
+          <div class="grid grid-cols-4 gap-2 text-center">
+            <div class="p-2 rounded bg-slate-900 border border-red-500/30">
+              <div class="text-red-400 font-bold">RED</div>
+              <div class="text-[11px] text-slate-400 mt-1">1101011<span class="text-cyan-400 font-bold underline">X</span></div>
+              <div class="text-[10px] text-cyan-300">LSB Bit 0</div>
+            </div>
+            <div class="p-2 rounded bg-slate-900 border border-green-500/30">
+              <div class="text-green-400 font-bold">GREEN</div>
+              <div class="text-[11px] text-slate-400 mt-1">0110100<span class="text-cyan-400 font-bold underline">Y</span></div>
+              <div class="text-[10px] text-cyan-300">LSB Bit 1</div>
+            </div>
+            <div class="p-2 rounded bg-slate-900 border border-blue-500/30">
+              <div class="text-blue-400 font-bold">BLUE</div>
+              <div class="text-[11px] text-slate-400 mt-1">1011001<span class="text-cyan-400 font-bold underline">Z</span></div>
+              <div class="text-[10px] text-cyan-300">LSB Bit 2</div>
+            </div>
+            <div class="p-2 rounded bg-slate-900 border border-purple-500/30">
+              <div class="text-purple-400 font-bold">ALPHA</div>
+              <div class="text-[11px] text-slate-400 mt-1">11111111</div>
+              <div class="text-[10px] text-purple-300">Fixed 255 (Untouched)</div>
+            </div>
+          </div>
+
+          <div class="text-slate-400 text-[11px] leading-normal pt-1">
+            • <strong>1 Pixel</strong> yields <strong>3 available bits</strong> (R, G, B).<br>
+            • <strong>32-Bit Length Header:</strong> The first 32 RGB bits encode the payload byte length L. The decoder reads this header in microseconds and only scans the exact necessary pixels.<br>
+            • <strong>Lossless PNG Requirement:</strong> JPEG and WebP apply lossy compression which obliterates LSB bits. Lossless PNG retains 100% of raw pixel values.
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <strong class="text-emerald-400">Optional Cryptographic Shielding:</strong>
+          <p class="text-slate-400 text-xs">
+            If you provide a Stego Password, your payload is encrypted via PBKDF2 key derivation and HMAC-SHA256 authenticated streaming cipher before pixel embedding. Even if someone extracts the raw LSB bits, without the key they only see cryptographically random noise.
+          </p>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-800 flex justify-end">
+        <button id="modalGotItBtn" class="px-5 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold text-xs transition-colors">
+          Got It, Let's Encode
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-900 bg-cyber-black/90 py-6 text-center text-xs text-slate-500 font-mono mt-auto">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div>
+        <span class="text-cyan-500 font-semibold">CYBER•STEGO</span> &copy; 2026 // Zero-Knowledge Client-Side Steganography
+      </div>
+      <div class="flex items-center gap-4 text-[11px]">
+        <span>No server transmissions</span>
+        <span>•</span>
+        <span>HTML5 Canvas API</span>
+        <span>•</span>
+        <span>Strict Lossless PNG</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ======================================================== -->
+  <!-- VANILLA JAVASCRIPT: CRYPTO & LSB STEGANOGRAPHY ENGINE    -->
+  <!-- ======================================================== -->
+  <script>
+    'use strict';
+
+    /* ========================================================
+       1. PURE JS CRYPTOGRAPHY ENGINE (PBKDF2 + HMAC-SHA256 CTR)
+       Runs 100% reliably in any browser context (HTTPS or file://)
+       ======================================================== */
+
+    function sha256(bytes) {
+      function rightRotate(value, amount) {
+        return (value >>> amount) | (value << (32 - amount));
+      }
+      const mathPow = Math.pow;
+      const maxWord = mathPow(2, 32);
+      let hash = [], k = [];
+      let primeCounter = 0, isComposite = {};
+      for (let candidate = 2; primeCounter < 64; candidate++) {
+        if (!isComposite[candidate]) {
+          for (let i = 0; i < 313; i += candidate) isComposite[i] = candidate;
+          hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+          k[primeCounter++] = (mathPow(candidate, 1/3) * maxWord) | 0;
+        }
+      }
+      hash = hash.slice(0, 8);
+      const words = [];
+      const bitLength = bytes.length * 8;
+      for (let i = 0; i < bytes.length; i++) {
+        const j = i >> 2;
+        words[j] = (words[j] || 0) | ((bytes[i] & 0xff) << (8 * (3 - (i % 4))));
+      }
+      const iEnd = bytes.length;
+      const jEnd = iEnd >> 2;
+      words[jEnd] = (words[jEnd] || 0) | (0x80 << (8 * (3 - (iEnd % 4))));
+      const blocks = (((bytes.length + 8) >> 6) + 1) * 16;
+      words[blocks - 1] = bitLength;
+
+      for (let b = 0; b < blocks; b += 16) {
+        const w = words.slice(b, b + 16);
+        for (let i = 0; i < 16; i++) w[i] = w[i] || 0;
+        for (let i = 16; i < 64; i++) {
+          const s0 = rightRotate(w[i - 15], 7) ^ rightRotate(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+          const s1 = rightRotate(w[i - 2], 17) ^ rightRotate(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+          w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
+        }
+        let a = hash[0], b_ = hash[1], c = hash[2], d = hash[3], e = hash[4], f = hash[5], g = hash[6], h = hash[7];
+        for (let i = 0; i < 64; i++) {
+          const S1 = rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25);
+          const ch = (e & f) ^ ((~e) & g);
+          const temp1 = (h + S1 + ch + k[i] + w[i]) | 0;
+          const S0 = rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22);
+          const maj = (a & b_) ^ (a & c) ^ (b_ & c);
+          const temp2 = (S0 + maj) | 0;
+          h = g; g = f; f = e; e = (d + temp1) | 0;
+          d = c; c = b_; b_ = a; a = (temp1 + temp2) | 0;
+        }
+        hash[0] = (hash[0] + a) | 0; hash[1] = (hash[1] + b_) | 0;
+        hash[2] = (hash[2] + c) | 0; hash[3] = (hash[3] + d) | 0;
+        hash[4] = (hash[4] + e) | 0; hash[5] = (hash[5] + f) | 0;
+        hash[6] = (hash[6] + g) | 0; hash[7] = (hash[7] + h) | 0;
+      }
+
+      const out = new Uint8Array(32);
+      for (let i = 0; i < 8; i++) {
+        out[i * 4]     = (hash[i] >>> 24) & 0xff;
+        out[i * 4 + 1] = (hash[i] >>> 16) & 0xff;
+        out[i * 4 + 2] = (hash[i] >>> 8) & 0xff;
+        out[i * 4 + 3] = hash[i] & 0xff;
+      }
+      return out;
+    }
+
+    function hmac_sha256(key, msg) {
+      let k = new Uint8Array(64);
+      if (key.length > 64) key = sha256(key);
+      k.set(key);
+      const o_key_pad = new Uint8Array(64);
+      const i_key_pad = new Uint8Array(64);
+      for (let i = 0; i < 64; i++) {
+        o_key_pad[i] = k[i] ^ 0x5c;
+        i_key_pad[i] = k[i] ^ 0x36;
+      }
+      const inner = new Uint8Array(64 + msg.length);
+      inner.set(i_key_pad);
+      inner.set(msg, 64);
+      const innerHash = sha256(inner);
+      const outer = new Uint8Array(64 + 32);
+      outer.set(o_key_pad);
+      outer.set(innerHash, 64);
+      return sha256(outer);
+    }
+
+    function pbkdf2_sha256(passwordStr, salt, iterations, keyLen) {
+      const pw = new TextEncoder().encode(passwordStr);
+      const numBlocks = Math.ceil(keyLen / 32);
+      const result = new Uint8Array(numBlocks * 32);
+      for (let b = 1; b <= numBlocks; b++) {
+        const saltAndBlock = new Uint8Array(salt.length + 4);
+        saltAndBlock.set(salt);
+        saltAndBlock[salt.length]     = (b >>> 24) & 0xff;
+        saltAndBlock[salt.length + 1] = (b >>> 16) & 0xff;
+        saltAndBlock[salt.length + 2] = (b >>> 8) & 0xff;
+        saltAndBlock[salt.length + 3] = b & 0xff;
+
+        let u = hmac_sha256(pw, saltAndBlock);
+        const f = new Uint8Array(u);
+        for (let iter = 1; iter < iterations; iter++) {
+          u = hmac_sha256(pw, u);
+          for (let i = 0; i < 32; i++) f[i] ^= u[i];
+        }
+        result.set(f, (b - 1) * 32);
+      }
+      return result.slice(0, keyLen);
+    }
+
+    function ctr_cipher(key, data) {
+      const out = new Uint8Array(data.length);
+      const blockCount = Math.ceil(data.length / 32);
+      let offset = 0;
+      for (let b = 0; b < blockCount; b++) {
+        const counterBytes = new Uint8Array(8);
+        counterBytes[0] = 0x43; counterBytes[1] = 0x54; counterBytes[2] = 0x52; counterBytes[3] = 0x31; // 'CTR1'
+        counterBytes[4] = (b >>> 24) & 0xff;
+        counterBytes[5] = (b >>> 16) & 0xff;
+        counterBytes[6] = (b >>> 8) & 0xff;
+        counterBytes[7] = b & 0xff;
+        const keystream = hmac_sha256(key, counterBytes);
+        for (let i = 0; i < 32 && offset < data.length; i++, offset++) {
+          out[offset] = data[offset] ^ keystream[i];
+        }
+      }
+      return out;
+    }
+
+    /* ========================================================
+       2. LSB STEGANOGRAPHY CORE ENGINE
+       ======================================================== */
+
+    // Magic Header: "STGO" (0x53, 0x54, 0x47, 0x4F)
+    const MAGIC_HEADER = [0x53, 0x54, 0x47, 0x4F];
+
+    /**
+     * Builds the final byte payload from the secret text.
+     * If password is provided:
+     *   Header: "STGO" + 0x01 (Encrypted) + 16B Salt + 16B HMAC Tag + Ciphertext
+     * If no password:
+     *   Header: "STGO" + 0x00 (Plaintext) + Raw UTF-8 bytes
+     */
+    function buildPayload(secretText, password) {
+      const msgBytes = new TextEncoder().encode(secretText);
+      const trimmedPw = (password || '').trim();
+
+      if (!trimmedPw) {
+        // Unencrypted mode
+        const payload = new Uint8Array(5 + msgBytes.length);
+        payload.set(MAGIC_HEADER, 0);
+        payload[4] = 0x00; // Plaintext flag
+        payload.set(msgBytes, 5);
+        return payload;
+      } else {
+        // Authenticated Encryption mode
+        const salt = new Uint8Array(16);
+        if (window.crypto && window.crypto.getRandomValues) {
+          window.crypto.getRandomValues(salt);
+        } else {
+          for (let i = 0; i < 16; i++) salt[i] = Math.floor(Math.random() * 256);
+        }
+
+        const derivedKey = pbkdf2_sha256(trimmedPw, salt, 800, 32);
+        const ciphertext = ctr_cipher(derivedKey, msgBytes);
+        const authTag = hmac_sha256(derivedKey, ciphertext).slice(0, 16);
+
+        const payload = new Uint8Array(5 + 16 + 16 + ciphertext.length);
+        payload.set(MAGIC_HEADER, 0);
+        payload[4] = 0x01; // Encrypted flag
+        payload.set(salt, 5);
+        payload.set(authTag, 21);
+        payload.set(ciphertext, 37);
+        return payload;
+      }
+    }
+
+    /**
+     * Embeds payload into Canvas ImageData using LSB.
+     * Prefixes with a 32-bit (4-byte) integer length.
+     * Modifies ONLY R, G, B channels. Leaves Alpha at 255.
+     */
+    function embedLSB(imageData, payload) {
+      const data = imageData.data;
+      const width = imageData.width;
+      const height = imageData.height;
+      const totalPixels = width * height;
+      const totalRgbChannels = totalPixels * 3;
+      const len = payload.length;
+      const totalBitsNeeded = 32 + (len * 8);
+
+      if (totalBitsNeeded > totalRgbChannels) {
+        throw new Error(`Message too large! Needs ${totalBitsNeeded} bits, but this image only accommodates ${totalRgbChannels} bits.`);
+      }
+
+      // CRITICAL SAFEGUARD: Set Alpha = 255 across ALL pixels to eliminate browser canvas alpha-premultiplication!
+      for (let p = 0; p < totalPixels; p++) {
+        data[p * 4 + 3] = 255;
+      }
+
+      // Step A: Embed 32-bit length header (Big-Endian, MSB first)
+      for (let k = 0; k < 32; k++) {
+        const bit = (len >>> (31 - k)) & 1;
+        const pixelIdx = Math.floor(k / 3);
+        const channel = k % 3;
+        const byteOffset = pixelIdx * 4 + channel;
+        data[byteOffset] = (data[byteOffset] & 0xFE) | bit;
+      }
+
+      // Step B: Embed payload bytes
+      let bitIdx = 0;
+      for (let b = 0; b < len; b++) {
+        const byteVal = payload[b];
+        for (let i = 0; i < 8; i++) {
+          const bit = (byteVal >>> (7 - i)) & 1;
+          const k = 32 + bitIdx;
+          const pixelIdx = Math.floor(k / 3);
+          const channel = k % 3;
+          const byteOffset = pixelIdx * 4 + channel;
+          data[byteOffset] = (data[byteOffset] & 0xFE) | bit;
+          bitIdx++;
+        }
+      }
+
+      const pixelsTouched = Math.ceil(totalBitsNeeded / 3);
+
+      return {
+        bitsWritten: totalBitsNeeded,
+        payloadBytes: len,
+        pixelsModified: pixelsTouched
+      };
+    }
+
+    /**
+     * Extracts and decrypts payload from Canvas ImageData.
+     */
+    function extractLSB(imageData, password) {
+      const data = imageData.data;
+      const width = imageData.width;
+      const height = imageData.height;
+      const totalRgbChannels = width * height * 3;
+
+      if (totalRgbChannels < 32) {
+        throw new Error('Image too small to contain a valid steganographic header.');
+      }
+
+      // Step 1: Read 32-bit length header
+      let rawLength = 0;
+      for (let k = 0; k < 32; k++) {
+        const pixelIdx = Math.floor(k / 3);
+        const channel = k % 3;
+        const byteOffset = pixelIdx * 4 + channel;
+        const bit = data[byteOffset] & 1;
+        rawLength = (rawLength << 1) | bit;
+      }
+      rawLength = rawLength >>> 0; // unsigned 32-bit int
+
+      const maxPossiblePayload = Math.floor((totalRgbChannels - 32) / 8);
+
+      if (rawLength === 0 || rawLength > maxPossiblePayload) {
+        throw new Error('No hidden message found (invalid length header or non-stego image).');
+      }
+
+      // Step 2: Read payload bytes
+      const payload = new Uint8Array(rawLength);
+      let bitIdx = 0;
+      for (let b = 0; b < rawLength; b++) {
+        let byteVal = 0;
+        for (let i = 0; i < 8; i++) {
+          const k = 32 + bitIdx;
+          const pixelIdx = Math.floor(k / 3);
+          const channel = k % 3;
+          const byteOffset = pixelIdx * 4 + channel;
+          const bit = data[byteOffset] & 1;
+          byteVal = (byteVal << 1) | bit;
+          bitIdx++;
+        }
+        payload[b] = byteVal;
+      }
+
+      // Step 3: Interpret payload format
+      const hasMagic = payload.length >= 5 &&
+        payload[0] === MAGIC_HEADER[0] &&
+        payload[1] === MAGIC_HEADER[1] &&
+        payload[2] === MAGIC_HEADER[2] &&
+        payload[3] === MAGIC_HEADER[3];
+
+      if (!hasMagic) {
+        // Fallback: Generic unformatted UTF-8 payload
+        try {
+          const rawText = new TextDecoder('utf-8', { fatal: true }).decode(payload);
+          return {
+            text: rawText,
+            isEncrypted: false,
+            bytes: rawLength
+          };
+        } catch (e) {
+          throw new Error('No hidden message found (data appears corrupted or random).');
+        }
+      }
+
+      const mode = payload[4];
+
+      if (mode === 0x00) {
+        // Plaintext mode
+        const msgBytes = payload.slice(5);
+        try {
+          const text = new TextDecoder('utf-8', { fatal: true }).decode(msgBytes);
+          return {
+            text: text,
+            isEncrypted: false,
+            bytes: msgBytes.length
+          };
+        } catch (e) {
+          throw new Error('Corrupted message payload (invalid UTF-8 bytes).');
+        }
+      } else if (mode === 0x01) {
+        // Encrypted mode
+        if (payload.length < 5 + 16 + 16) {
+          throw new Error('Corrupted encrypted payload header.');
+        }
+
+        const trimmedPw = (password || '').trim();
+        if (!trimmedPw) {
+          const err = new Error('This image contains a PASSWORD-PROTECTED message. Please provide the Stego Password/Key to decrypt.');
+          err.code = 'PASSWORD_REQUIRED';
+          throw err;
+        }
+
+        const salt = payload.slice(5, 21);
+        const expectedTag = payload.slice(21, 37);
+        const ciphertext = payload.slice(37);
+
+        const derivedKey = pbkdf2_sha256(trimmedPw, salt, 800, 32);
+        const computedTag = hmac_sha256(derivedKey, ciphertext).slice(0, 16);
+
+        // Constant-time tag comparison
+        let tagMatch = true;
+        for (let i = 0; i < 16; i++) {
+          if (expectedTag[i] !== computedTag[i]) tagMatch = false;
+        }
+
+        if (!tagMatch) {
+          const err = new Error('Decryption failed! Incorrect Stego Password or corrupted payload.');
+          err.code = 'WRONG_PASSWORD';
+          throw err;
+        }
+
+        const decryptedBytes = ctr_cipher(derivedKey, ciphertext);
+        try {
+          const text = new TextDecoder('utf-8', { fatal: true }).decode(decryptedBytes);
+          return {
+            text: text,
+            isEncrypted: true,
+            bytes: decryptedBytes.length
+          };
+        } catch (e) {
+          throw new Error('Decryption succeeded, but text contains invalid UTF-8 encoding.');
+        }
+      } else {
+        throw new Error('Unrecognized steganography payload version.');
+      }
+    }
+
+
+    /* ========================================================
+       3. UI CONTROLLER & APPLICATION STATE
+       ======================================================== */
+
+    const state = {
+      activeTab: 'encode', // 'encode' | 'decode'
+      encodeImage: null,   // HTMLImageElement
+      encodeFileName: '',
+      encodeCapacity: 0,   // Max secret bytes possible
+      decodeImage: null,   // HTMLImageElement
+      decodeFileName: '',
+      lastEncodedBlob: null,
+      lastEncodedDataUrl: null,
+      lastEncodedFileName: 'stego_secret.png'
+    };
+
+    // DOM Elements Cache
+    const el = {
+      // Tabs
+      tabEncodeBtn: document.getElementById('tabEncodeBtn'),
+      tabDecodeBtn: document.getElementById('tabDecodeBtn'),
+      encodeSection: document.getElementById('encodeSection'),
+      decodeSection: document.getElementById('decodeSection'),
+
+      // Encode UI
+      encodeDropzone: document.getElementById('encodeDropzone'),
+      encodeFileInput: document.getElementById('encodeFileInput'),
+      encodeEmptyPrompt: document.getElementById('encodeEmptyPrompt'),
+      encodePreviewContainer: document.getElementById('encodePreviewContainer'),
+      encodeImagePreview: document.getElementById('encodeImagePreview'),
+      encodeFileName: document.getElementById('encodeFileName'),
+      removeCoverImageBtn: document.getElementById('removeCoverImageBtn'),
+      generateSampleCoverBtn: document.getElementById('generateSampleCoverBtn'),
+      
+      // Encode Metrics
+      encodeStatusTag: document.getElementById('encodeStatusTag'),
+      encodeResText: document.getElementById('encodeResText'),
+      encodePixelsText: document.getElementById('encodePixelsText'),
+      encodeCapacityText: document.getElementById('encodeCapacityText'),
+      encodeProgressBar: document.getElementById('encodeProgressBar'),
+      encodeMaxCharsText: document.getElementById('encodeMaxCharsText'),
+
+      // Secret Message & Controls
+      secretMessageInput: document.getElementById('secretMessageInput'),
+      charCountLabel: document.getElementById('charCountLabel'),
+      encodePasswordInput: document.getElementById('encodePasswordInput'),
+      toggleEncodePasswordBtn: document.getElementById('toggleEncodePasswordBtn'),
+      encodeAndDownloadBtn: document.getElementById('encodeAndDownloadBtn'),
+      encodeBtnText: document.getElementById('encodeBtnText'),
+      loadSampleMessageBtn: document.getElementById('loadSampleMessageBtn'),
+      clearMessageBtn: document.getElementById('clearMessageBtn'),
+      postEncodeActionBox: document.getElementById('postEncodeActionBox'),
+      quickSwitchToDecodeBtn: document.getElementById('quickSwitchToDecodeBtn'),
+
+      // Decode UI
+      decodeDropzone: document.getElementById('decodeDropzone'),
+      decodeFileInput: document.getElementById('decodeFileInput'),
+      decodeEmptyPrompt: document.getElementById('decodeEmptyPrompt'),
+      decodePreviewContainer: document.getElementById('decodePreviewContainer'),
+      decodeImagePreview: document.getElementById('decodeImagePreview'),
+      decodeFileName: document.getElementById('decodeFileName'),
+      removeDecodeImageBtn: document.getElementById('removeDecodeImageBtn'),
+      loadLastEncodedBtn: document.getElementById('loadLastEncodedBtn'),
+      decodeJpegWarning: document.getElementById('decodeJpegWarning'),
+      decodeResText: document.getElementById('decodeResText'),
+      decodeChannelsText: document.getElementById('decodeChannelsText'),
+      decodePasswordInput: document.getElementById('decodePasswordInput'),
+      toggleDecodePasswordBtn: document.getElementById('toggleDecodePasswordBtn'),
+      revealMessageBtn: document.getElementById('revealMessageBtn'),
+      decodeBtnText: document.getElementById('decodeBtnText'),
+      decodeStatusBadge: document.getElementById('decodeStatusBadge'),
+
+      // Revealed Message Output
+      decodedEmptyPrompt: document.getElementById('decodedEmptyPrompt'),
+      decodedTextOutput: document.getElementById('decodedTextOutput'),
+      revealedStats: document.getElementById('revealedStats'),
+      copyMessageBtn: document.getElementById('copyMessageBtn'),
+      copyBtnText: document.getElementById('copyBtnText'),
+      downloadTextBtn: document.getElementById('downloadTextBtn'),
+      clearDecodedBtn: document.getElementById('clearDecodedBtn'),
+
+      // Modal & Info
+      howItWorksBtn: document.getElementById('howItWorksBtn'),
+      howItWorksModal: document.getElementById('howItWorksModal'),
+      closeModalBtn: document.getElementById('closeModalBtn'),
+      modalGotItBtn: document.getElementById('modalGotItBtn'),
+      toastContainer: document.getElementById('toastContainer')
+    };
+
+    /* ========================================================
+       4. TOAST NOTIFICATION SYSTEM
+       ======================================================== */
+
+    function showToast(message, type = 'info', duration = 4000) {
+      const toast = document.createElement('div');
+      toast.className = 'pointer-events-auto flex items-start gap-3 p-4 rounded-xl shadow-2xl border text-xs sm:text-sm toast-enter transition-all backdrop-blur-md';
+
+      let iconSvg = '';
+      let styleClasses = '';
+
+      switch(type) {
+        case 'success':
+          styleClasses = 'bg-slate-900/95 border-emerald-500/50 text-emerald-200 glow-green';
+          iconSvg = `<svg class="w-5 h-5 text-emerald-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+          break;
+        case 'error':
+          styleClasses = 'bg-slate-900/95 border-red-500/50 text-red-200';
+          iconSvg = `<svg class="w-5 h-5 text-red-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
+          break;
+        case 'warning':
+          styleClasses = 'bg-slate-900/95 border-amber-500/50 text-amber-200';
+          iconSvg = `<svg class="w-5 h-5 text-amber-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/>`;
+          break;
+        default:
+          styleClasses = 'bg-slate-900/95 border-cyan-500/50 text-cyan-200 glow-cyan';
+          iconSvg = `<svg class="w-5 h-5 text-cyan-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
+      }
+
+      toast.className += ` ${styleClasses}`;
+      toast.innerHTML = `
+        ${iconSvg}
+        <div class="flex-1 font-mono text-xs leading-relaxed break-words">${message}</div>
+        <button class="text-slate-400 hover:text-white transition-colors" onclick="this.parentElement.remove()">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      `;
+
+      el.toastContainer.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.remove('toast-enter');
+        toast.classList.add('toast-exit');
+        setTimeout(() => toast.remove(), 250);
+      }, duration);
+    }
+
+    /* ========================================================
+       5. TAB NAVIGATION CONTROLLER
+       ======================================================== */
+
+    function switchTab(target) {
+      state.activeTab = target;
+      if (target === 'encode') {
+        el.tabEncodeBtn.className = 'flex-1 flex items-center justify-center gap-2.5 py-3 px-4 rounded-lg font-semibold text-sm transition-all duration-200 bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 glow-cyan';
+        el.tabDecodeBtn.className = 'flex-1 flex items-center justify-center gap-2.5 py-3 px-4 rounded-lg font-semibold text-sm transition-all duration-200 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent';
+        el.encodeSection.classList.remove('hidden');
+        el.decodeSection.classList.add('hidden');
+      } else {
+        el.tabDecodeBtn.className = 'flex-1 flex items-center justify-center gap-2.5 py-3 px-4 rounded-lg font-semibold text-sm transition-all duration-200 bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 glow-green';
+        el.tabEncodeBtn.className = 'flex-1 flex items-center justify-center gap-2.5 py-3 px-4 rounded-lg font-semibold text-sm transition-all duration-200 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent';
+        el.decodeSection.classList.remove('hidden');
+        el.encodeSection.classList.add('hidden');
+      }
+    }
+
+    el.tabEncodeBtn.addEventListener('click', () => switchTab('encode'));
+    el.tabDecodeBtn.addEventListener('click', () => switchTab('decode'));
+
+    /* ========================================================
+       6. ENCODE SECTION LOGIC
+       ======================================================== */
+
+    // Drag and Drop for Encode
+    ['dragenter', 'dragover'].forEach(name => {
+      el.encodeDropzone.addEventListener(name, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        el.encodeDropzone.classList.add('drag-active');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(name => {
+      el.encodeDropzone.addEventListener(name, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        el.encodeDropzone.classList.remove('drag-active');
+      });
+    });
+
+    el.encodeDropzone.addEventListener('drop', (e) => {
+      const file = e.dataTransfer.files[0];
+      if (file) handleEncodeImageFile(file);
+    });
+
+    el.encodeDropzone.addEventListener('click', (e) => {
+      if (e.target.closest('#removeCoverImageBtn')) return;
+      el.encodeFileInput.click();
+    });
+
+    el.encodeFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) handleEncodeImageFile(file);
+    });
+
+    el.removeCoverImageBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearEncodeImage();
+    });
+
+    function handleEncodeImageFile(file) {
+      if (!file.type.startsWith('image/')) {
+        showToast('Please upload a valid image file (PNG, JPG, BMP).', 'error');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          state.encodeImage = img;
+          state.encodeFileName = file.name;
+
+          el.encodeImagePreview.src = event.target.result;
+          el.encodeFileName.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+          el.encodeEmptyPrompt.classList.add('hidden');
+          el.encodePreviewContainer.classList.remove('hidden');
+          el.postEncodeActionBox.classList.add('hidden');
+
+          updateEncodeMetrics();
+          showToast(`Cover image loaded: ${img.naturalWidth} × ${img.naturalHeight} px`, 'success');
+        };
+        img.onerror = () => {
+          showToast('Failed to parse cover image file.', 'error');
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearEncodeImage() {
+      state.encodeImage = null;
+      state.encodeFileName = '';
+      state.encodeCapacity = 0;
+      el.encodeFileInput.value = '';
+      el.encodeImagePreview.src = '';
+      el.encodeEmptyPrompt.classList.remove('hidden');
+      el.encodePreviewContainer.classList.add('hidden');
+      el.postEncodeActionBox.classList.add('hidden');
+      
+      el.encodeStatusTag.innerHTML = `<span>●</span> Awaiting Cover`;
+      el.encodeStatusTag.className = 'text-amber-400 flex items-center gap-1 font-mono text-[11px]';
+      el.encodeResText.textContent = '0 × 0 px';
+      el.encodePixelsText.textContent = '0';
+      el.encodeCapacityText.textContent = '0 / 0 bytes (0%)';
+      el.encodeProgressBar.style.width = '0%';
+      el.encodeMaxCharsText.textContent = 'Max: 0 chars';
+      el.encodeAndDownloadBtn.disabled = true;
+    }
+
+    // Procedural Cyber Gradient Generator for quick 1-click testing
+    el.generateSampleCoverBtn.addEventListener('click', () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 900;
+      canvas.height = 600;
+      const ctx = canvas.getContext('2d');
+
+      // Solid background base (prevent transparency)
+      ctx.fillStyle = '#060a14';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Cyber radial gradient
+      const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      grad.addColorStop(0, '#0a192f');
+      grad.addColorStop(0.3, '#020c1b');
+      grad.addColorStop(0.7, '#0d1b2a');
+      grad.addColorStop(1, '#001e3d');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Sci-fi grid lines
+      ctx.strokeStyle = 'rgba(0, 240, 255, 0.15)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= canvas.width; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= canvas.height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      // Glowing cyber orb
+      const orb = ctx.createRadialGradient(450, 300, 10, 450, 300, 260);
+      orb.addColorStop(0, 'rgba(0, 240, 255, 0.6)');
+      orb.addColorStop(0.5, 'rgba(0, 255, 157, 0.2)');
+      orb.addColorStop(1, 'transparent');
+      ctx.fillStyle = orb;
+      ctx.beginPath();
+      ctx.arc(450, 300, 260, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Cyber watermark
+      ctx.font = 'bold 28px monospace';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.textAlign = 'center';
+      ctx.fillText('CYBER•COVER // LSB CARRIER MATRIX', 450, 300);
+      ctx.font = '14px monospace';
+      ctx.fillStyle = 'rgba(0, 240, 255, 0.75)';
+      ctx.fillText('900 × 600 • 3-CHANNEL LOSSLESS RGBA CONTAINER', 450, 330);
+
+      const dataUrl = canvas.toDataURL('image/png');
+      const img = new Image();
+      img.onload = () => {
+        state.encodeImage = img;
+        state.encodeFileName = 'cyber_matrix_cover.png';
+        el.encodeImagePreview.src = dataUrl;
+        el.encodeFileName.textContent = 'cyber_matrix_cover.png (Sample Generated)';
+        el.encodeEmptyPrompt.classList.add('hidden');
+        el.encodePreviewContainer.classList.remove('hidden');
+        el.postEncodeActionBox.classList.add('hidden');
+        updateEncodeMetrics();
+        showToast('Generated 900×600 Cyber Matrix cover canvas image!', 'success');
+      };
+      img.src = dataUrl;
+    });
+
+    // Update real-time capacity and progress
+    function updateEncodeMetrics() {
+      if (!state.encodeImage) return;
+
+      const width = state.encodeImage.naturalWidth;
+      const height = state.encodeImage.naturalHeight;
+      const totalPixels = width * height;
+      const totalRgbChannels = totalPixels * 3;
+
+      // 32 bits reserved for length header
+      const maxAvailableBytes = Math.floor((totalRgbChannels - 32) / 8);
+      state.encodeCapacity = maxAvailableBytes;
+
+      el.encodeStatusTag.innerHTML = `<span>●</span> Ready to Encode`;
+      el.encodeStatusTag.className = 'text-cyan-400 flex items-center gap-1 font-mono text-[11px]';
+      el.encodeResText.textContent = `${width} × ${height} px`;
+      el.encodePixelsText.textContent = totalPixels.toLocaleString();
+      el.encodeMaxCharsText.textContent = `Max: ~${maxAvailableBytes.toLocaleString()} bytes`;
+
+      // Evaluate message payload length
+      const secretText = el.secretMessageInput.value;
+      const pw = el.encodePasswordInput.value.trim();
+      const rawMsgBytes = new TextEncoder().encode(secretText).length;
+
+      // Calculate estimated payload overhead
+      // If encrypted: 5 (header) + 16 (salt) + 16 (tag) = 37 bytes overhead
+      // If plain: 5 (header) bytes overhead
+      const overhead = pw ? 37 : 5;
+      const totalPayloadBytes = rawMsgBytes > 0 ? (rawMsgBytes + overhead) : 0;
+
+      el.charCountLabel.textContent = `${secretText.length.toLocaleString()} chars (${rawMsgBytes.toLocaleString()} bytes)`;
+
+      const percent = maxAvailableBytes > 0 ? ((totalPayloadBytes / maxAvailableBytes) * 100) : 0;
+      const clampedPercent = Math.min(100, percent).toFixed(2);
+
+      el.encodeCapacityText.textContent = `${totalPayloadBytes.toLocaleString()} / ${maxAvailableBytes.toLocaleString()} bytes (${clampedPercent}%)`;
+      el.encodeProgressBar.style.width = `${clampedPercent}%`;
+
+      if (totalPayloadBytes > maxAvailableBytes) {
+        el.encodeCapacityText.className = 'font-mono font-medium text-red-400';
+        el.encodeProgressBar.className = 'h-full bg-red-500 transition-all duration-200';
+        el.encodeAndDownloadBtn.disabled = true;
+      } else {
+        el.encodeCapacityText.className = 'font-mono font-medium text-cyan-400';
+        el.encodeProgressBar.className = 'h-full bg-gradient-to-r from-cyan-500 to-emerald-400 transition-all duration-200';
+        el.encodeAndDownloadBtn.disabled = (secretText.trim().length === 0);
+      }
+    }
+
+    el.secretMessageInput.addEventListener('input', updateEncodeMetrics);
+    el.encodePasswordInput.addEventListener('input', updateEncodeMetrics);
+
+    // Toggle password visibility
+    el.toggleEncodePasswordBtn.addEventListener('click', () => {
+      const type = el.encodePasswordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+      el.encodePasswordInput.setAttribute('type', type);
+    });
+
+    el.toggleDecodePasswordBtn.addEventListener('click', () => {
+      const type = el.decodePasswordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+      el.decodePasswordInput.setAttribute('type', type);
+    });
+
+    // Sample message dispatches
+    el.loadSampleMessageBtn.addEventListener('click', () => {
+      const sample = `[TOP SECRET // PROJECT STEGOCYBER]
+DISPATCH: 2026-ALPHA-77
+COORDINATES: 37°42'20"N 122°05'04"W
+CLEARANCE: LEVEL 5 // COMPARTMENTALIZED
+
+The decentralized neural relay is operational. All quantum-resistant key pairs have been initialized. Remember: Covert channels in losslessly compressed PNG bitmaps preserve data integrity across planetary nodes.
+
+AUTHORIZATION CODE: #CYBER-992-DELTA-8X`;
+      el.secretMessageInput.value = sample;
+      updateEncodeMetrics();
+      showToast('Sample dispatch loaded into message buffer.', 'info');
+    });
+
+    el.clearMessageBtn.addEventListener('click', () => {
+      el.secretMessageInput.value = '';
+      updateEncodeMetrics();
+    });
+
+    // ENCODE AND DOWNLOAD ACTION
+    el.encodeAndDownloadBtn.addEventListener('click', async () => {
+      if (!state.encodeImage) {
+        showToast('Please upload a cover image first.', 'warning');
+        return;
+      }
+
+      const secretText = el.secretMessageInput.value;
+      if (!secretText.trim()) {
+        showToast('Please enter a secret message to embed.', 'warning');
+        return;
+      }
+
+      const password = el.encodePasswordInput.value;
+
+      try {
+        // UI Loading state
+        el.encodeAndDownloadBtn.disabled = true;
+        el.encodeBtnText.textContent = 'Processing LSB Embedding...';
+
+        // Wait a microtask so UI renders
+        await new Promise(resolve => setTimeout(resolve, 30));
+
+        // Create in-memory canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = state.encodeImage.naturalWidth;
+        canvas.height = state.encodeImage.naturalHeight;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        // Ensure opaque base
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw cover image
+        ctx.drawImage(state.encodeImage, 0, 0);
+
+        // Fetch raw pixel array
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        // Build structured payload
+        const payload = buildPayload(secretText, password);
+
+        // Embed payload using LSB
+        const stats = embedLSB(imgData, payload);
+
+        // Write modified pixels back to canvas
+        ctx.putImageData(imgData, 0, 0);
+
+        // Export strictly as lossless PNG
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            showToast('Failed to create PNG blob.', 'error');
+            resetEncodeButton();
+            return;
+          }
+
+          state.lastEncodedBlob = blob;
+          const url = URL.createObjectURL(blob);
+          state.lastEncodedDataUrl = url;
+
+          const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+          const downloadName = `stego_${timestamp}.png`;
+          state.lastEncodedFileName = downloadName;
+
+          // Trigger automatic browser download
+          const downloadLink = document.createElement('a');
+          downloadLink.href = url;
+          downloadLink.download = downloadName;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+
+          // Enable "Load Last Encoded" button and Quick Switch banner
+          el.loadLastEncodedBtn.classList.remove('hidden');
+          el.postEncodeActionBox.classList.remove('hidden');
+
+          showToast(`Success! Downloaded "${downloadName}" (${stats.payloadBytes} bytes embedded in ${stats.pixelsModified} pixels).`, 'success', 6000);
+          resetEncodeButton();
+        }, 'image/png');
+
+      } catch (err) {
+        console.error('Encoding error:', err);
+        showToast(err.message || 'An error occurred during encoding.', 'error');
+        resetEncodeButton();
+      }
+    });
+
+    function resetEncodeButton() {
+      el.encodeAndDownloadBtn.disabled = false;
+      el.encodeBtnText.textContent = '🔒 Encode & Download Stego PNG';
+      updateEncodeMetrics();
+    }
+
+    // Quick Switch to Decode Button handler
+    el.quickSwitchToDecodeBtn.addEventListener('click', () => {
+      switchTab('decode');
+      if (state.lastEncodedDataUrl) {
+        loadDecodeImageSrc(state.lastEncodedDataUrl, state.lastEncodedFileName);
+        if (el.encodePasswordInput.value) {
+          el.decodePasswordInput.value = el.encodePasswordInput.value;
+        }
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+
+    /* ========================================================
+       7. DECODE SECTION LOGIC
+       ======================================================== */
+
+    // Drag and Drop for Decode
+    ['dragenter', 'dragover'].forEach(name => {
+      el.decodeDropzone.addEventListener(name, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        el.decodeDropzone.classList.add('drag-active');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(name => {
+      el.decodeDropzone.addEventListener(name, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        el.decodeDropzone.classList.remove('drag-active');
+      });
+    });
+
+    el.decodeDropzone.addEventListener('drop', (e) => {
+      const file = e.dataTransfer.files[0];
+      if (file) handleDecodeImageFile(file);
+    });
+
+    el.decodeDropzone.addEventListener('click', (e) => {
+      if (e.target.closest('#removeDecodeImageBtn')) return;
+      el.decodeFileInput.click();
+    });
+
+    el.decodeFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) handleDecodeImageFile(file);
+    });
+
+    el.removeDecodeImageBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearDecodeImage();
+    });
+
+    function handleDecodeImageFile(file) {
+      if (!file.type.startsWith('image/')) {
+        showToast('Please upload a valid image file.', 'error');
+        return;
+      }
+
+      // Check if user uploaded JPEG
+      if (file.type === 'image/jpeg' || file.name.toLowerCase().endsWith('.jpg') || file.name.toLowerCase().endsWith('.jpeg')) {
+        el.decodeJpegWarning.classList.remove('hidden');
+      } else {
+        el.decodeJpegWarning.classList.add('hidden');
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        loadDecodeImageSrc(event.target.result, file.name);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function loadDecodeImageSrc(src, fileName) {
+      const img = new Image();
+      img.onload = () => {
+        state.decodeImage = img;
+        state.decodeFileName = fileName;
+
+        el.decodeImagePreview.src = src;
+        el.decodeFileName.textContent = fileName;
+        el.decodeEmptyPrompt.classList.add('hidden');
+        el.decodePreviewContainer.classList.remove('hidden');
+
+        const width = img.naturalWidth;
+        const height = img.naturalHeight;
+        el.decodeResText.textContent = `${width} × ${height} px`;
+        el.decodeChannelsText.textContent = (width * height * 3).toLocaleString();
+        el.revealMessageBtn.disabled = false;
+
+        showToast(`Stego image loaded: ${width} × ${height} px. Ready to reveal.`, 'info');
+      };
+      img.onerror = () => {
+        showToast('Failed to load stego image.', 'error');
+      };
+      img.src = src;
+    }
+
+    function clearDecodeImage() {
+      state.decodeImage = null;
+      state.decodeFileName = '';
+      el.decodeFileInput.value = '';
+      el.decodeImagePreview.src = '';
+      el.decodeEmptyPrompt.classList.remove('hidden');
+      el.decodePreviewContainer.classList.add('hidden');
+      el.decodeJpegWarning.classList.add('hidden');
+      el.decodeResText.textContent = '0 × 0 px';
+      el.decodeChannelsText.textContent = '0';
+      el.revealMessageBtn.disabled = true;
+    }
+
+    // Load Last Encoded Image shortcut
+    el.loadLastEncodedBtn.addEventListener('click', () => {
+      if (!state.lastEncodedDataUrl) {
+        showToast('No recently encoded image available.', 'warning');
+        return;
+      }
+      loadDecodeImageSrc(state.lastEncodedDataUrl, state.lastEncodedFileName);
+      // Transfer password if used
+      if (el.encodePasswordInput.value) {
+        el.decodePasswordInput.value = el.encodePasswordInput.value;
+      }
+      showToast('Loaded last encoded stego image into decoder!', 'success');
+    });
+
+    // REVEAL MESSAGE ACTION
+    el.revealMessageBtn.addEventListener('click', async () => {
+      if (!state.decodeImage) {
+        showToast('Please upload a stego image first.', 'warning');
+        return;
+      }
+
+      const password = el.decodePasswordInput.value;
+
+      try {
+        el.revealMessageBtn.disabled = true;
+        el.decodeBtnText.textContent = 'Scanning LSB Matrix...';
+        el.decodeStatusBadge.textContent = 'STATUS: DECODING...';
+        el.decodeStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded bg-amber-950/80 border border-amber-800 text-amber-300';
+
+        await new Promise(resolve => setTimeout(resolve, 30));
+
+        // Draw image onto offscreen canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = state.decodeImage.naturalWidth;
+        canvas.height = state.decodeImage.naturalHeight;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(state.decodeImage, 0, 0);
+
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        // Extract hidden message
+        const result = extractLSB(imgData, password);
+
+        // Display revealed text
+        el.decodedTextOutput.textContent = result.text;
+        el.decodedTextOutput.classList.remove('hidden');
+        el.decodedEmptyPrompt.classList.add('hidden');
+
+        // Update stats
+        const wordCount = result.text.trim() ? result.text.trim().split(/\s+/).length : 0;
+        el.revealedStats.textContent = `${wordCount.toLocaleString()} words | ${result.text.length.toLocaleString()} chars (${result.bytes} bytes)`;
+
+        el.copyMessageBtn.disabled = false;
+        el.downloadTextBtn.disabled = false;
+
+        el.decodeStatusBadge.textContent = result.isEncrypted ? 'STATUS: DECRYPTED (VERIFIED KEY)' : 'STATUS: EXTRACTED (PLAINTEXT)';
+        el.decodeStatusBadge.className = result.isEncrypted
+          ? 'text-[11px] font-mono px-2 py-0.5 rounded bg-purple-950/80 border border-purple-800 text-purple-300'
+          : 'text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-800 text-emerald-300';
+
+        showToast('Secret message successfully revealed!', 'success');
+
+      } catch (err) {
+        console.warn('Extraction error:', err);
+        el.decodeStatusBadge.textContent = 'STATUS: EXTRACTION FAILED';
+        el.decodeStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded bg-red-950/80 border border-red-800 text-red-300';
+
+        if (err.code === 'PASSWORD_REQUIRED') {
+          showToast('This message is encrypted with a password. Please enter the Stego Key to reveal it.', 'warning', 6000);
+          el.decodePasswordInput.focus();
+        } else if (err.code === 'WRONG_PASSWORD') {
+          showToast('Incorrect password! Decryption failed.', 'error', 5000);
+          el.decodePasswordInput.focus();
+        } else {
+          showToast(err.message || 'No hidden message detected in this image.', 'error', 5000);
+        }
+      } finally {
+        el.revealMessageBtn.disabled = false;
+        el.decodeBtnText.textContent = '🔓 Reveal Hidden Message';
+      }
+    });
+
+    // Copy to Clipboard
+    el.copyMessageBtn.addEventListener('click', async () => {
+      const text = el.decodedTextOutput.textContent;
+      if (!text) return;
+
+      try {
+        await navigator.clipboard.writeText(text);
+        el.copyBtnText.textContent = 'Copied! ✓';
+        el.copyMessageBtn.classList.add('border-emerald-500', 'text-emerald-300');
+        showToast('Secret message copied to clipboard!', 'success');
+        setTimeout(() => {
+          el.copyBtnText.textContent = 'Copy to Clipboard';
+          el.copyMessageBtn.classList.remove('border-emerald-500', 'text-emerald-300');
+        }, 2000);
+      } catch (e) {
+        // Fallback copy
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        showToast('Secret message copied to clipboard!', 'success');
+      }
+    });
+
+    // Download text as .txt
+    el.downloadTextBtn.addEventListener('click', () => {
+      const text = el.decodedTextOutput.textContent;
+      if (!text) return;
+
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `revealed_payload_${Date.now()}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Payload saved as text file.', 'info');
+    });
+
+    // Clear Decoded Output
+    el.clearDecodedBtn.addEventListener('click', () => {
+      el.decodedTextOutput.textContent = '';
+      el.decodedTextOutput.classList.add('hidden');
+      el.decodedEmptyPrompt.classList.remove('hidden');
+      el.revealedStats.textContent = '0 words | 0 chars';
+      el.copyMessageBtn.disabled = true;
+      el.downloadTextBtn.disabled = true;
+      el.decodeStatusBadge.textContent = 'STATUS: IDLE';
+      el.decodeStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400';
+    });
+
+
+    /* ========================================================
+       8. MODAL CONTROLLER
+       ======================================================== */
+
+    function openModal() {
+      el.howItWorksModal.classList.remove('hidden');
+    }
+    function closeModal() {
+      el.howItWorksModal.classList.add('hidden');
+    }
+
+    el.howItWorksBtn.addEventListener('click', openModal);
+    el.closeModalBtn.addEventListener('click', closeModal);
+    el.modalGotItBtn.addEventListener('click', closeModal);
+    el.howItWorksModal.addEventListener('click', (e) => {
+      if (e.target === el.howItWorksModal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !el.howItWorksModal.classList.contains('hidden')) {
+        closeModal();
+      }
+    });
+
+  </script>
+</body>
+</html>
